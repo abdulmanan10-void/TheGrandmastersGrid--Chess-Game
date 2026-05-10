@@ -153,3 +153,39 @@ public:
     void reset();
     void display(const string& p1name, const string& p2name) const;
 };
+
+//  Game class:
+class Game
+{
+private:
+    Board board_;
+    string player1_;   // White
+    string player2_;   // Black
+    Color currentTurn_;
+    bool gameOver_;
+
+    Color opponent(Color c)               const;
+    Position parseSquare(const string& s, bool& ok) const;
+    string posToStr(const Position& p)     const;
+    void promotePawn(const Position& pos);
+    void switchTurn();
+public:
+    Game();
+    void setPlayers(const string& p1, const string& p2);
+    void run();
+};
+
+
+//  Interface helpers:
+struct TermSize
+{
+    int w;
+    int h;
+};   // terminal width / height in characters
+
+TermSize getTerminalSize();
+void vpad(int contentLines, int termHeight);  // prints blank lines to vertically centre
+void clearScreen();
+void showWelcome();
+bool confirmExit();
+void getPlayerNames(string& p1, string& p2);
