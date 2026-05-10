@@ -656,3 +656,327 @@ static void printMsgBox(const string& msg, const char* color, int termW) {
     cout << color << indent << middle << RS << "\n";
     cout << color << indent << bot << RS << "\n";
 }
+void Game::run()
+{
+    board_.reset();
+    currentTurn_ = Color::WHITE;
+    gameOver_ = false;
+
+    // ANSI
+    const char* GOLD = "\033[0;33m";    // gold 
+    const char* WHITE_COL = "\033[1;97m";    // white — white turn indicator
+    const char* DP = "\033[38;5;55m"; // dark purple — black turn indicator
+    const char* RED = "\033[1;91m";    // red — CHECK
+    const char* GREEN = "\033[1;92m";    // green — WIN
+    const char* YEL = "\033[1;93m";    // yellow — STALEMATE
+    const char* RS = "\033[0m";
+
+    while (!gameOver_)
+    {
+        clearScreen();
+
+        TermSize ts = getTerminalSize();
+
+        bool   inCheck = board_.isInCheck(currentTurn_);
+        bool   hasMove = board_.hasAnyLegalMove(currentTurn_);
+        string turnName = (currentTurn_ == Color::WHITE) ? player1_ : player2_;
+        string turnColor = (currentTurn_ == Color::WHITE) ? "White" : "Black";
+
+        // Game over
+        if (!hasMove)
+        {
+            board_.display(player1_, player2_);
+            cout << "\n";
+            if (inCheck) {
+                string winnerName = (currentTurn_ == Color::WHITE) ? player2_ : player1_;
+                string winnerColor = (currentTurn_ == Color::WHITE) ? "Black" : "White";
+                printMsgBox("Congratulations " + winnerName + " (" + winnerColor + ") has WON!", GREEN, ts.w);
+            }
+            else {
+                printMsgBox("STALEMATE!  The game is a draw.", YEL, ts.w);
+            }
+            cout << "\n";
+            cout << GOLD << "  Press ENTER to return to the Main Menu..." << RS;
+            cin.ignore();
+            cin.get();
+            gameOver_ = true;
+            return;
+        }
+
+        // Display board
+        board_.display(player1_, player2_);
+
+        // CHECK box
+        if (inCheck) {
+            string checkMsg = "CHECK! " + turnName + " (" + turnColor + ") KING is under attack!";
+            printMsgBox(checkMsg, RED, ts.w);
+            cout << "\n";
+        }
+
+        // Turn indicator — white=bright white, black=dark purple
+        const char* turnColor_ansi = (currentTurn_ == Color::WHITE) ? WHITE_COL : DP;
+        cout << "  " << turnColor_ansi << "Turn: " << turnName << " (" << turnColor << ")" << RS << "\n\n";
+
+        // Piece selection + destination loop
+        Position from;
+        PosArray legal;
+        bool reselect = true;
+
+        while (reselect) {
+            reselect = false;
+
+            // Select a piece
+            while (true) {
+                cout << GOLD << "  Select piece: ";
+                string fromStr;
+                cin >> fromStr;
+                cout << RS;
+
+                bool ok;
+                from = parseSquare(fromStr, ok);
+                if (!ok) {
+                    cout << GOLD << "  Invalid square. Use letter + number." << RS << "\n";
+                    continue;
+                }
+                Piece* p = board_.getPiece(from);
+                if (!p) {
+                    cout << GOLD << "  No piece at " << fromStr << ". Try again." << RS << "\n";
+                    continue;
+                }
+                if (p->getColor() != currentTurn_) {
+                    cout << GOLD << "  That is not your piece. Try again." << RS << "\n";
+                    continue;
+                }
+                legal = board_.legalMoves(from, currentTurn_);
+                if (legal.size() == 0) {
+                    cout << GOLD << "  That piece has no legal moves. Choose another." << RS << "\n";
+                    continue;
+                }
+                break;
+            }
+
+            // valid destination squares
+            cout << "\n";
+            cout << GOLD << "  Valid moves for " << board_.getPiece(from)->symbol()
+                << " at " << posToStr(from) << ":  ";
+            for (int i = 0; i < legal.size(); ++i)
+            {
+                cout << posToStr(legal[i]);
+                if (i < legal.size() - 1) cout << ",  ";
+            }
+            cout << RS << "\n\n";
+
+            // Select a destination
+            while (true)
+            {
+                cout << GOLD << "  Enter destination OR \"!\" to change piece: ";
+                string toStr;
+                cin >> toStr;
+                cout << RS;
+
+                if (toStr == "!")
+                {
+                    clearScreen();
+                    board_.display(player1_, player2_);
+                    if (inCheck)
+                    {
+                        string checkMsg = "CHECK! " + turnName + " (" + turnColor + ") KING is under attack!";
+                        printMsgBox(checkMsg, RED, ts.w);
+                        cout << "\n";
+                    }
+                    cout << "  " << turnColor_ansi << "Turn: " << turnName
+                        << " (" << turnColor << ")" << RS << "\n\n";
+                    reselect = true;
+                    break;
+                }
+
+                bool ok;
+                Position to = parseSquare(toStr, ok);
+                if (!ok)
+                {
+                    cout << GOLD << "  Invalid square. Try again." << RS << "\n";
+                    continue;
+                }
+
+                bool found = false;
+                for (int i = 0; i < legal.size(); ++i)
+                {
+                    if (legal[i] == to)
+                    {
+                        found = true; break;
+                    }
+                }
+
+                if (!found)
+                {
+                    cout << GOLD << "  Not a valid move for this piece. Try again." << RS << "\n";
+                    continue;
+                }
+
+                board_.movePiece(from, to);
+                promotePawn(to);
+                switchTurn();
+                break;
+            }
+        }
+    }
+}
+
+//  Interface helpers:
+void clearScreen() {
+#ifdef _WIN32
+    system("cls");
+#else
+    system("clear");
+#endif
+}
+
+// Terminal size detection
+TermSize getTerminalSize() {
+#ifdef _WIN32
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (GetConsoleScreenBufferInfo(h, &csbi)) {
+        int w = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+        int h2 = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+        if (w > 0 && h2 > 0) return { w, h2 };
+    }
+#endif
+    return { 80, 24 };   // safe fallback
+}
+
+// Centering helpers
+static string hpad(int contentWidth, int termWidth)
+{
+    int spaces = (termWidth - contentWidth) / 2;
+    if (spaces < 0) spaces = 0;
+    return string(spaces, ' ');
+}
+
+void vpad(int contentLines, int termHeight)
+{
+    int lines = (termHeight - contentLines) / 2;
+    if (lines < 0) lines = 0;
+    for (int i = 0; i < lines; ++i) cout << "\n";
+}
+
+// Main Menu
+void showWelcome()
+{
+    clearScreen();
+    const char* O = "\033[38;5;214m";
+    const char* RS = "\033[0m";
+
+    TermSize ts = getTerminalSize();
+
+    const int BORDER_W = 50;
+    const int TITLE_W = 35;
+    const int GRID_W = 7;
+    const int OPT1_W = 25;
+    const int OPT2_W = 8;
+    const int PROMPT_W = 31;
+    const int CONTENT_H = 13;
+
+    vpad(CONTENT_H, ts.h);
+
+    cout << O;
+    cout << hpad(BORDER_W, ts.w) << "==================================================" << "\n";
+    cout << "\n";
+    cout << hpad(TITLE_W, ts.w) << "T H E   G R A N D M A S T E R ' S" << "\n";
+    cout << hpad(GRID_W, ts.w) << "G R I D" << "\n";
+    cout << "\n";
+    cout << hpad(BORDER_W, ts.w) << "==================================================" << "\n";
+    cout << "\n";
+    cout << hpad(OPT1_W, ts.w) << "1.  Start Match  (1 vs 1)" << "\n";
+    cout << "\n";
+    cout << hpad(OPT2_W, ts.w) << "2.  Exit" << "\n";
+    cout << "\n\n";
+    cout << hpad(PROMPT_W, ts.w) << "Please select an option (1-2): ";
+    cout << RS;
+}
+
+// Exit confirmation 
+bool confirmExit()
+{
+    clearScreen();
+    const char* O = "\033[38;5;214m";
+    const char* RS = "\033[0m";
+
+    TermSize ts = getTerminalSize();
+
+    const int PROMPT_W = 39;
+    const int CONTENT_H = 1;
+
+    vpad(CONTENT_H, ts.h);
+
+    cout << O;
+    cout << hpad(PROMPT_W, ts.w) << "Are you sure you want to exit? (Y/N): ";
+
+    char ch;
+    cin >> ch;
+    return (ch == 'Y' || ch == 'y');
+}
+
+// Player Info
+void getPlayerNames(string& p1, string& p2) {
+    clearScreen();
+    const char* O = "\033[38;5;214m";
+    const char* DP = "\033[38;5;55m";
+    const char* RS = "\033[0m";
+
+    TermSize ts = getTerminalSize();
+
+    const int BORDER_W = 50;
+    const int HEADER_W = 21;
+    const int P1_W = 33;
+    const int P2_W = 33;
+    const int LEGEND_W = 13;
+    const int WLEG_W = 58;
+    const int BLEG_W = 58;
+    const int ENTER_W = 23;
+
+    const int CONTENT_H = 16;
+
+    vpad(CONTENT_H, ts.h);
+
+    // Header (orange) 
+    cout << O;
+    cout << hpad(BORDER_W, ts.w) << "==================================================" << endl << endl;
+    cout << hpad(HEADER_W, ts.w) << "P L A Y E R  I N F O" << endl << endl;
+    cout << hpad(BORDER_W, ts.w) << "==================================================" << "\n";
+    cout << RS;
+
+    cout << "\n\n";
+
+    // Player 1 (default color)
+    cout << hpad(P1_W, ts.w) << "Enter name for Player 1 (White): ";
+    cin.ignore();
+    getline(cin, p1);
+
+    cout << "\n";
+
+    // Player 2 (dark purple)
+    cout << DP;
+    cout << hpad(P2_W, ts.w) << "Enter name for Player 2 (Black): ";
+    getline(cin, p2);
+    cout << RS;
+
+    cout << "\n";
+
+    // Legend (Pieces)
+    cout << O;
+    cout << hpad(LEGEND_W, ts.w) << "Piece Legend:" << "\n\n";
+    cout << RS;
+    cout << hpad(WLEG_W, ts.w) << "White: K=King  Q=Queen  R=Rook  B=Bishop  N=Knight  P=Pawn" << "\n\n";
+    cout << DP;
+    cout << hpad(BLEG_W, ts.w) << "Black: k=King  q=Queen  r=Rook  b=Bishop  n=Knight  p=Pawn" << "\n";
+    cout << RS;
+
+    cout << "\n";
+
+    // Press ENTER
+    cout << O;
+    cout << hpad(ENTER_W, ts.w) << "Press ENTER to start...";
+    cout << RS << "\n";
+    cin.get();
+}
