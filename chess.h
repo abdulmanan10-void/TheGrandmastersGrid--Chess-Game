@@ -61,3 +61,95 @@ public:
     virtual PosArray validMoves(const Position& from, const Board& board) const = 0;
     virtual char symbol()  const = 0;
 };
+
+//  Board Pieces classes:
+class Pawn : public Piece
+{
+public:
+    Pawn(Color c);
+    PosArray validMoves(const Position& from, const Board& board) const;
+    char symbol() const;
+};
+
+class Rook : public Piece
+{
+public:
+    Rook(Color c);
+    PosArray validMoves(const Position& from, const Board& board) const;
+    char symbol() const;
+};
+
+class Knight : public Piece
+{
+public:
+    Knight(Color c);
+    PosArray validMoves(const Position& from, const Board& board) const;
+    char symbol() const;
+};
+
+class Bishop : public Piece
+{
+public:
+    Bishop(Color c);
+    PosArray validMoves(const Position& from, const Board& board) const;
+    char symbol() const;
+};
+
+class Queen : public Piece
+{
+public:
+    Queen(Color c);
+    PosArray validMoves(const Position& from, const Board& board) const;
+    char symbol() const;
+};
+
+class King : public Piece
+{
+public:
+    King(Color c);
+    PosArray validMoves(const Position& from, const Board& board) const;
+    char symbol() const;
+};
+
+//  Board  class:
+class Board
+{
+private:
+    Piece* grid_[8][8];
+    void clearGrid();
+    void placePieces();
+public:
+    Board();
+    ~Board();
+    Board(const Board&) = delete;
+    Board& operator=(const Board&) = delete;
+
+    Piece* getPiece(const Position& p) const;
+    Piece* getPiece(int r, int c) const;
+    bool isEmpty(const Position& p) const;
+    bool isEnemy(const Position& p, Color c) const;
+
+    void movePiece(const Position& from, const Position& to);
+    void setPiece(const Position& p, Piece* newPiece);
+
+    // Template:
+    template <typename Func>
+    void simulateMove(const Position& from, const Position& to, Func fn)
+    {
+        Piece* moving = grid_[from.row][from.col];
+        Piece* captured = grid_[to.row][to.col];
+        grid_[to.row][to.col] = moving;
+        grid_[from.row][from.col] = nullptr;
+        fn();
+        grid_[from.row][from.col] = moving;
+        grid_[to.row][to.col] = captured;
+    }
+
+    PosArray legalMoves(const Position& from, Color c) const;
+    bool     isInCheck(Color c) const;
+    bool     hasAnyLegalMove(Color c) const;
+    Position findKing(Color c) const;
+
+    void reset();
+    void display(const string& p1name, const string& p2name) const;
+};
